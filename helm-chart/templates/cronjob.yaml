@@ -1,0 +1,54 @@
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  namespace: {{ .Values.env }}
+  name: {{ include "hpa-scaler.fullname" . }}
+  labels:
+    {{- include "hpa-scaler.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.schedule }}
+  successfulJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            {{- include "hpa-scaler.labels" . | nindent 12 }}
+        spec:       
+          containers:
+          - name: {{ .Chart.Name }}
+            image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+            imagePullPolicy: {{ .Values.image.pullPolicy }}
+            env: 
+              - name: PROM_URL
+                value: {{ .Values.prometheus_url }}
+              - name: NAMESPACE
+                value: {{ .Values.namespace }}
+              - name: DEPLOYMENT
+                value: {{ .Values.deployment }}
+              - name: HPA_FLOOR
+                value: {{ .Values.hpa_floor }}
+              - name: COMPARISON_POINTS
+                value: {{ .Values.comparison_points }}
+              - name: BUFFER
+                value: {{ .Values.buffer }}
+            resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          restartPolicy: {{ .Values.restartPolicy }}
+          {{- with .Values.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          serviceAccountName: {{ include "hpa-scaler.serviceAccountName" . }}
+          {{- with .Values.nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.affinity }}
+          affinity:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.tolerations }}
+          tolerations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}

@@ -2,6 +2,7 @@ import logging
 import math
 import os
 import requests
+import sys
 import time
 import urllib.parse
 from kubernetes import client, config
@@ -14,11 +15,12 @@ def get_replicas_from_prometheus(url, namespace, deployment, offset):
         json_data = requests.get(f'{url}/api/v1/query?query={encoded_query}&time={current_time}').json()
     except:
         logging.exception("Issue querying Prometheus data")
+        return -1
     try:
         replicas = int(json_data['data']['result'][0]['value'][1])
     except:
         logging.warning(f"Missing or invalid data for deploy {deployment} in ns {namespace} for offset {offset}")
-        replicas = -1
+        return -1
     return replicas
 
 def update_hpa(namespace, deployment, target):
@@ -27,6 +29,7 @@ def update_hpa(namespace, deployment, target):
         if hpa.spec.scale_target_ref.name == deployment:
             break
     hpa.spec.min_replicas = target
+    logging.info(f"Updating hpa {hpa.spec.name} in {namespace} with new minimum of {target} pods")
     client.AutoscalingV1Api().patch_namespaced_horizontal_pod_autoscaler(hpa.metadata.name, namespace, hpa)
 
 
@@ -36,7 +39,7 @@ config.load_incluster_config()
 prometheus_url = os.environ['PROM_URL']
 namespace = os.environ['NAMESPACE']
 deployment = os.environ['DEPLOYMENT']
-hpa_floor = os.environ.get('HPA_FLOOR', 2)
+hpa_floor = int(os.environ.get('HPA_FLOOR', 2))
 offsets = os.environ.get('COMPARISON_POINTS', '1d,7d').split(',')
 buffer = float(os.environ.get('BUFFER', '-.2'))
 
@@ -51,3 +54,4 @@ if targets:
     update_hpa(namespace, deployment, max(targets))
 else:
     logging.error("No data point found, skipping update")
+    sys.exit(1)
